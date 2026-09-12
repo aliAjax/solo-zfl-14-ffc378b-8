@@ -56,7 +56,7 @@ h1 {
 .stats {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(3, minmax(110px, 1fr));
+  grid-template-columns: repeat(4, minmax(110px, 1fr));
 }
 
 .stat,
@@ -266,6 +266,69 @@ textarea {
   gap: 8px;
 }
 
+.chip.actual {
+  background: #f3ece1;
+  color: #8a5a2b;
+}
+
+.chip.actual strong {
+  font-size: 0.92rem;
+}
+
+.materials {
+  border-top: 1px dashed #d5dacf;
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+}
+
+.materials h4 {
+  font-size: 0.88rem;
+  margin: 0;
+}
+
+.material-row {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(120px, 2fr) minmax(84px, 1fr) minmax(70px, 1fr) minmax(74px, 1fr) auto;
+}
+
+.material-row input {
+  min-height: 38px;
+}
+
+.material-labels {
+  color: #7a8378;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.material-labels span:last-child {
+  min-width: 52px;
+}
+
+.subtotal {
+  color: #596257;
+  font-size: 0.86rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.subtotal em {
+  font-style: normal;
+}
+
+.no-material {
+  color: #8a9288;
+  font-size: 0.82rem;
+  margin: 0;
+}
+
+.material-add {
+  justify-self: start;
+}
+
 .empty {
   align-items: center;
   color: #828a80;
@@ -298,5 +361,14 @@ textarea {
 
   .content {
     padding: 14px;
+  }
+
+  .material-row {
+    gap: 6px;
+    grid-template-columns: minmax(90px, 2fr) minmax(64px, 1fr) minmax(52px, 1fr) minmax(60px, 1fr) auto;
+  }
+
+  .material-row input {
+    padding: 7px;
   }
 }

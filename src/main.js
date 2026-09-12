@@ -19,11 +19,17 @@ const app = document.querySelector("#app");
 
 function loadState() {
   const saved = localStorage.getItem(STORAGE_KEY);
-  if (saved) return JSON.parse(saved);
+  if (saved) {
+    const parsed = JSON.parse(saved);
+    return {
+      filter: parsed.filter || "all",
+      repairs: (parsed.repairs || []).map(normalizeRepair)
+    };
+  }
   return {
     filter: "all",
     repairs: [
-      {
+      normalizeRepair({
         id: crypto.randomUUID(),
         location: "厨房",
         title: "水槽下方渗水",
@@ -32,9 +38,34 @@ function loadState() {
         status: "todo",
         photo: "",
         note: "先检查软管接口"
-      }
+      })
     ]
   };
+}
+
+function normalizeRepair(repair) {
+  const materials = Array.isArray(repair.materials)
+    ? repair.materials.map((material) => ({
+        id: material.id || crypto.randomUUID(),
+        name: String(material.name || ""),
+        price: toAmount(material.price),
+        qty: toAmount(material.qty)
+      }))
+    : [];
+  return { ...repair, cost: toAmount(repair.cost), materials };
+}
+
+function toAmount(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.round(number * 100) / 100 : 0;
+}
+
+function materialTotal(repair) {
+  return repair.materials.reduce((total, material) => total + material.price * material.qty, 0);
+}
+
+function formatMoney(value) {
+  return String(Math.round((Number(value) || 0) * 100) / 100);
 }
 
 function saveState() {
@@ -44,7 +75,9 @@ function saveState() {
 function render() {
   const repairs = filteredRepairs();
   const unfinished = state.repairs.filter((repair) => repair.status !== "done");
-  const totalCost = unfinished.reduce((total, repair) => total + Number(repair.cost || 0), 0);
+  const finished = state.repairs.filter((repair) => repair.status === "done");
+  const estimatedCost = unfinished.reduce((total, repair) => total + Number(repair.cost || 0), 0);
+  const finishedSpent = finished.reduce((total, repair) => total + materialTotal(repair), 0);
   const doing = state.repairs.filter((repair) => repair.status === "doing").length;
 
   app.innerHTML = `
@@ -57,7 +90,8 @@ function render() {
         <section class="stats">
           <div class="stat"><span>未完成</span><strong>${unfinished.length}</strong></div>
           <div class="stat"><span>处理中</span><strong>${doing}</strong></div>
-          <div class="stat"><span>预计费用</span><strong>¥${totalCost}</strong></div>
+          <div class="stat"><span>预计费用</span><strong data-stat="estimated">¥${formatMoney(estimatedCost)}</strong></div>
+          <div class="stat"><span>已完成支出</span><strong data-stat="spent">¥${formatMoney(finishedSpent)}</strong></div>
         </section>
       </header>
 
@@ -92,6 +126,7 @@ function render() {
 }
 
 function renderRepair(repair) {
+  const actual = materialTotal(repair);
   return `
     <article class="repair">
       <div class="photo">${repair.photo ? `<img src="${escapeHtml(repair.photo)}" alt="${escapeHtml(repair.location)}维修照片">` : "未添加照片"}</div>
@@ -103,15 +138,43 @@ function renderRepair(repair) {
         </div>
         <p>${escapeHtml(repair.title)}</p>
         <div class="row">
-          <span class="chip">预计 ¥${Number(repair.cost || 0)}</span>
+          <span class="chip">预计 ¥${formatMoney(repair.cost)}</span>
+          <span class="chip actual">实际费用 ¥<strong data-actual="${repair.id}">${formatMoney(actual)}</strong></span>
           <span class="chip">${escapeHtml(repair.note || "暂无备注")}</span>
         </div>
+        ${renderMaterials(repair)}
         <div class="actions">
           <select data-status="${repair.id}">${renderStatusOptions(repair.status)}</select>
           <button class="ghost" data-delete="${repair.id}">删除</button>
         </div>
       </div>
     </article>
+  `;
+}
+
+function renderMaterials(repair) {
+  return `
+    <div class="materials">
+      <h4>耗材明细</h4>
+      <div class="material-row material-labels">
+        <span>名称</span><span>单价</span><span>数量</span><span>小计</span><span></span>
+      </div>
+      ${repair.materials.length ? repair.materials.map((material) => renderMaterialRow(repair, material)).join("") : `<p class="no-material">暂无耗材，点击下方按钮添加</p>`}
+      <button class="ghost material-add" type="button" data-material-add="${repair.id}">＋ 添加耗材</button>
+    </div>
+  `;
+}
+
+function renderMaterialRow(repair, material) {
+  const subtotal = material.price * material.qty;
+  return `
+    <div class="material-row">
+      <input data-repair="${repair.id}" data-material="${material.id}" data-field="name" placeholder="耗材名称" value="${escapeHtml(material.name)}">
+      <input data-repair="${repair.id}" data-material="${material.id}" data-field="price" type="number" min="0" step="0.01" value="${material.price}">
+      <input data-repair="${repair.id}" data-material="${material.id}" data-field="qty" type="number" min="0" step="1" value="${material.qty}">
+      <span class="subtotal">¥<em data-subtotal="${repair.id}:${material.id}">${formatMoney(subtotal)}</em></span>
+      <button class="ghost" type="button" data-material-remove="${repair.id}" data-material-id="${material.id}">移除</button>
+    </div>
   `;
 }
 
@@ -132,16 +195,18 @@ function bindEvents() {
   document.querySelector("#repair-form").addEventListener("submit", (event) => {
     event.preventDefault();
     const data = Object.fromEntries(new FormData(event.target));
-    state.repairs.unshift({
-      id: crypto.randomUUID(),
-      location: data.location.trim(),
-      title: data.title.trim(),
-      priority: data.priority,
-      cost: Number(data.cost || 0),
-      status: data.status,
-      photo: data.photo.trim(),
-      note: data.note.trim()
-    });
+    state.repairs.unshift(
+      normalizeRepair({
+        id: crypto.randomUUID(),
+        location: data.location.trim(),
+        title: data.title.trim(),
+        priority: data.priority,
+        cost: Number(data.cost || 0),
+        status: data.status,
+        photo: data.photo.trim(),
+        note: data.note.trim()
+      })
+    );
     saveState();
     render();
   });
@@ -170,6 +235,63 @@ function bindEvents() {
       render();
     });
   });
+
+  document.querySelectorAll("[data-material-add]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const repair = state.repairs.find((item) => item.id === button.dataset.materialAdd);
+      const material = { id: crypto.randomUUID(), name: "", price: 0, qty: 1 };
+      repair.materials.push(material);
+      saveState();
+      render();
+      const nameInput = document.querySelector(`[data-material="${material.id}"][data-field="name"]`);
+      if (nameInput) nameInput.focus();
+    });
+  });
+
+  document.querySelectorAll("[data-material-remove]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const repair = state.repairs.find((item) => item.id === button.dataset.materialRemove);
+      repair.materials = repair.materials.filter((material) => material.id !== button.dataset.materialId);
+      saveState();
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-field]").forEach((input) => {
+    input.addEventListener("input", () => {
+      const repair = state.repairs.find((item) => item.id === input.dataset.repair);
+      const material = repair.materials.find((item) => item.id === input.dataset.material);
+      if (input.dataset.field === "name") {
+        material.name = input.value;
+      } else {
+        material[input.dataset.field] = toAmount(input.value);
+      }
+      saveState();
+      refreshAmounts();
+    });
+  });
+}
+
+function refreshAmounts() {
+  state.repairs.forEach((repair) => {
+    repair.materials.forEach((material) => {
+      const subtotal = document.querySelector(`[data-subtotal="${repair.id}:${material.id}"]`);
+      if (subtotal) subtotal.textContent = formatMoney(material.price * material.qty);
+    });
+    const actual = document.querySelector(`[data-actual="${repair.id}"]`);
+    if (actual) actual.textContent = formatMoney(materialTotal(repair));
+  });
+
+  const unfinished = state.repairs.filter((repair) => repair.status !== "done");
+  const finished = state.repairs.filter((repair) => repair.status === "done");
+  const estimated = document.querySelector('[data-stat="estimated"]');
+  const spent = document.querySelector('[data-stat="spent"]');
+  if (estimated) {
+    estimated.textContent = `¥${formatMoney(unfinished.reduce((total, repair) => total + Number(repair.cost || 0), 0))}`;
+  }
+  if (spent) {
+    spent.textContent = `¥${formatMoney(finished.reduce((total, repair) => total + materialTotal(repair), 0))}`;
+  }
 }
 
 function filteredRepairs() {

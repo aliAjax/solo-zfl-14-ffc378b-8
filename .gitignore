@@ -14,3 +14,9 @@ pnpm-debug.log*
 .DS_Store
 .idea/
 .vscode/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
